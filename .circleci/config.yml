@@ -1,0 +1,57 @@
+version: 2.1
+
+orbs:
+  aws-ecr: circleci/aws-ecr@9.0.0
+
+jobs:
+  # Variety 1: ECR via orb, image name from environment: block
+  build-push-ecr-orb:
+    docker:
+      - image: cimg/aws:2023.09          # runner image (should be ignored as output)
+    environment:
+      IMAGE_NAME: mcp-server-test
+    steps:
+      - checkout
+      - aws-ecr/build_and_push_image:
+          repo: $IMAGE_NAME
+          tag: ${CIRCLE_SHA1}
+
+  # Variety 2: raw docker build + push, full ECR URL literal
+  build-push-ecr-raw:
+    docker:
+      - image: cimg/base:2023.09
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build and push
+          command: |
+            docker build -t 123456789012.dkr.ecr.ap-south-1.amazonaws.com/payment-service:${CIRCLE_SHA1} .
+            docker push 123456789012.dkr.ecr.ap-south-1.amazonaws.com/payment-service:${CIRCLE_SHA1}
+
+  # Variety 3: runner-image-only job, no push (should NOT be treated as an output image)
+  unit-test:
+    docker:
+      - image: cimg/node:20.11
+    steps:
+      - checkout
+      - run: echo "running tests, no image push here"
+
+workflows:
+  staging:
+    jobs:
+      - unit-test:
+          filters:
+            branches:
+              only: develop
+      - build-push-ecr-orb:
+          filters:
+            branches:
+              only: develop
+
+  production:
+    jobs:
+      - build-push-ecr-raw:
+          filters:
+            branches:
+              only: main
